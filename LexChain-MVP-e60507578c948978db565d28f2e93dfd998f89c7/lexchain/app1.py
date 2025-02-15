@@ -52,7 +52,8 @@ CORS(app,
              "origins": ["https://dashboard.lexchain.net"],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
-             "supports_credentials": True
+             "supports_credentials": True,
+             "expose_headers": ["Set-Cookie"]
          }
      })
 
@@ -623,10 +624,18 @@ class SecureFileManager:
 @app.route('/api/user')
 def get_user():
     session_id = request.cookies.get('session_id')
+    print(f"Received session_id: {session_id}")
+    print(f"Available sessions: {list(sessions.keys())}")
+    
     if not session_id or session_id not in sessions:
-        return jsonify({"authenticated": False}), 401
+        return jsonify({
+            "authenticated": False,
+            "error": "No valid session found",
+            "session_id_present": bool(session_id)
+        }), 401
     
     user_info = sessions[session_id].get('user_info', {})
+    print(f"Found user_info: {user_info}")
     return jsonify({
         "authenticated": True,
         "user": {
@@ -737,7 +746,9 @@ def auth_callback():
             httponly=True,
             secure=True,
             samesite='Lax',
-            max_age=3600
+            max_age=3600,
+            domain='dashboard.lexchain.net',
+            path='/'
         )
         return response
 
