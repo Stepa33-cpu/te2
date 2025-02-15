@@ -51,24 +51,22 @@ CORS(app,
          r"/*": {
              "origins": ["https://dashboard.lexchain.net"],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"],
+             "allow_headers": ["Content-Type", "Authorization", "Cookie"],
              "supports_credentials": True,
-             "expose_headers": ["Set-Cookie"]
+             "expose_headers": ["Set-Cookie", "Cookie"]
          }
      })
 
 # Update the after_request handler
 @app.after_request
 def after_request(response):
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    
-    # Only add CORS headers for requests from your frontend
     origin = request.headers.get('Origin')
     if origin and origin == "https://dashboard.lexchain.net":
-        response.headers.add('Access-Control-Allow-Origin', origin)
-    
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Cookie'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Cookie'
     return response
 
 # Add production configurations
@@ -677,8 +675,17 @@ def get_auth_url():
 @app.route('/api/auth/callback')
 def auth_callback():
     code = request.args.get('code')
+    state = request.args.get('state')
+    stored_state = request.cookies.get('auth_state')
+    
+    print(f"Auth callback received - code: {code[:10] if code else None}")
+    print(f"State verification - received: {state}, stored: {stored_state}")
+    
     if not code:
         return jsonify({"error": "Authorization code is missing"}), 400
+        
+    if not state or state != stored_state:
+        return jsonify({"error": "State verification failed"}), 400
 
     try:
         # Create MSAL app with consumers endpoint for personal accounts
@@ -726,17 +733,21 @@ def auth_callback():
 
         # Create new session with user_info structure
         session_id = secrets.token_urlsafe(32)
+        print(f"Created new session_id: {session_id}")
+        
         user_info = {
             "id": user_id,
             "name": result.get("id_token_claims", {}).get("name")
         }
+        print(f"User info: {user_info}")
         
         sessions[session_id] = {
             "access_token": result["access_token"],
             "refresh_token": result.get("refresh_token"),
-            "user_info": user_info,  # Store user info in a consistent structure
+            "user_info": user_info,
             "expires_at": datetime.now() + timedelta(seconds=result.get("expires_in", 3600))
         }
+        print(f"Session stored. Total sessions: {len(sessions)}")
 
         # Set cookie and redirect
         response = redirect(FRONTEND_URL)
@@ -750,6 +761,10 @@ def auth_callback():
             domain='dashboard.lexchain.net',
             path='/'
         )
+        # Clear the auth_state cookie
+        response.delete_cookie('auth_state', domain='dashboard.lexchain.net', path='/')
+        
+        print(f"Set cookie in response: {response.headers.get('Set-Cookie')}")
         return response
 
     except Exception as e:
@@ -768,27 +783,45 @@ def logout():
 
 @app.route('/api/login')
 def login():
-    client_instance = ConfidentialClientApplication(
-        client_id=APPLICATION_ID,
-        client_credential=CLIENT_SECRET,
-        authority=AUTHORITY_URL
-    )
-    
-    print(f"Generating login URL with client_id: {APPLICATION_ID}")
-    
-    authorization_request_url = client_instance.get_authorization_request_url(
-        API_SCOPES,  # Only use API scopes
-        redirect_uri=REDIRECT_URI,
-        prompt='select_account',
-        response_mode='query',
-        domain_hint='consumers'
-    )
-    
-    if 'organizations' in authorization_request_url:
-        authorization_request_url = authorization_request_url.replace('/organizations/', '/common/')
-    
-    print(f"Login URL: {authorization_request_url}")
-    return redirect(authorization_request_url)
+    try:
+        client_instance = ConfidentialClientApplication(
+            client_id=APPLICATION_ID,
+            client_credential=CLIENT_SECRET,
+            authority=AUTHORITY_URL
+        )
+        
+        state = secrets.token_urlsafe(32)
+        authorization_request_url = client_instance.get_authorization_request_url(
+            API_SCOPES,
+            state=state,  # Add state parameter
+            redirect_uri=REDIRECT_URI,
+            prompt='select_account',
+            response_mode='query',
+            domain_hint='consumers'
+        )
+        
+        if 'organizations' in authorization_request_url:
+            authorization_request_url = authorization_request_url.replace('/organizations/', '/common/')
+        
+        print(f"Generated auth URL: {authorization_request_url}")
+        
+        # Store state in a cookie for verification
+        response = redirect(authorization_request_url)
+        response.set_cookie(
+            'auth_state',
+            state,
+            httponly=True,
+            secure=True,
+            samesite='Lax',
+            max_age=300,  # 5 minutes
+            domain='dashboard.lexchain.net',
+            path='/'
+        )
+        return response
+        
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 # Update the token refresh middleware
 def refresh_token_if_needed(session_data):

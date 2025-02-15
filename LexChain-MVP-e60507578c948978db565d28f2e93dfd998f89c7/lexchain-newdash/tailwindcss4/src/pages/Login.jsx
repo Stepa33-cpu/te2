@@ -6,8 +6,12 @@ const Login = () => {
     const { login } = useAuth();
 
     const handleLogin = async () => {
-        // Redirect to the backend login endpoint
-        window.location.href = 'https://dashboard.lexchain.net/login';
+        try {
+            // Use the Microsoft login endpoint directly
+            window.location.href = 'https://dashboard.lexchain.net/api/login';
+        } catch (error) {
+            console.error('Login failed:', error);
+        }
     };
 
     return (
