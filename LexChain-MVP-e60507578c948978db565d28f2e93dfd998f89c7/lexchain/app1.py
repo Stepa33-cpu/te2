@@ -105,13 +105,17 @@ def ensure_directory_permissions():
             # Create directory if it doesn't exist
             directory.mkdir(parents=True, exist_ok=True)
             
-            # Set permissions to 755 (rwxr-xr-x)
-            directory.chmod(0o755)
+            try:
+                # Try to set permissions, but don't fail if we can't
+                directory.chmod(0o755)
+            except PermissionError:
+                print(f"Warning: Could not set permissions for {directory}, continuing anyway")
             
-            print(f"Ensured directory exists with proper permissions: {directory}")
+            print(f"Ensured directory exists: {directory}")
         except Exception as e:
-            print(f"Error setting up directory {directory}: {str(e)}")
-            raise
+            print(f"Warning: Issue with directory {directory}: {str(e)}")
+            # Don't raise the error, just continue
+            continue
 
 # Call this function during app initialization
 ensure_directory_permissions()

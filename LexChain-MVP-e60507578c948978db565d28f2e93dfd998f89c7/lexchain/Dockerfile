@@ -10,22 +10,20 @@ RUN apt-get update && \
 # Create non-root user
 RUN useradd -m -r -s /bin/bash appuser
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/secure_storage && \
-    chown -R appuser:appuser /app
+# Create necessary directories with correct permissions
+RUN mkdir -p /app/logs \
+    /app/secure_storage \
+    /app/secure_storage/blockchain/metadata \
+    /app/secure_storage/blockchain/logs \
+    /app/secure_storage/fragments && \
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app/secure_storage
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN chown -R appuser:appuser /app
-
-# Create storage directories and set permissions
-RUN mkdir -p /app/secure_storage/blockchain/metadata \
-    /app/secure_storage/blockchain/logs \
-    /app/secure_storage/fragments && \
-    chown -R appuser:appuser /app/secure_storage && \
-    chmod -R 755 /app/secure_storage
 
 # Switch to non-root user
 USER appuser
