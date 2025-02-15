@@ -224,11 +224,15 @@ class SecureFileManager:
     MAX_CONCURRENT_UPLOADS = 3  # Maximum parallel uploads
     UPLOAD_DELAY = 0.5  # Delay between uploads in seconds
 
-    def __init__(self, derived_key: bytes, access_token: str, session_id: str):
-        self.derived_key = derived_key
-        self.aesgcm = AESGCM(derived_key)
+    def __init__(self, derived_key=None, access_token=None, session_id=None, password=None):
+        if password:
+            self.derived_key = derive_key(password)
+        else:
+            self.derived_key = derived_key
+            
         self.access_token = access_token
-        self.session_id = session_id  # Store session_id
+        self.session_id = session_id
+        self.aesgcm = AESGCM(self.derived_key)
         print(f"SecureFileManager initialized with token: {access_token[:10]}...")
         mimetypes.init()
 
@@ -939,21 +943,25 @@ def upload_file():
         if not session_id or session_id not in sessions:
             return jsonify({"error": "Not authenticated", "redirect": True}), 401
 
-        # Get user info
-        user_info = sessions[session_id].get('user_info', {})
-        user_id = user_info.get('id')
+        # Get session data
+        session_data = sessions[session_id]
+        access_token = session_data.get('access_token')
         
-        if not user_id:
-            return jsonify({"error": "User ID not found"}), 401
+        if not access_token:
+            return jsonify({"error": "Invalid session"}), 401
 
-        # Create secure file manager
-        file_manager = SecureFileManager(password)
+        # Create secure file manager with all required parameters
+        file_manager = SecureFileManager(
+            derived_key=derive_key(password),
+            access_token=access_token,
+            session_id=session_id
+        )
         
         # Process and store the file
         file_id = file_manager.store_file(
             file_stream=file.stream,
             filename=file.filename,
-            user_id=user_id
+            user_id=session_data.get('user_info', {}).get('id')
         )
 
         return jsonify({
