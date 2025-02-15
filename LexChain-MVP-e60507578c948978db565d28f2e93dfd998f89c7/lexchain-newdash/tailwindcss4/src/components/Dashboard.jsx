@@ -40,6 +40,7 @@ const Dashboard = () => {
     const [logs, setLogs] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+    const fileInputRef = useRef(null);
 
     const mockStorageData = [
         { name: 'Jan', usage: 65 },
@@ -61,7 +62,7 @@ const Dashboard = () => {
         const [file, setFile] = useState(null);
         const [uploading, setUploading] = useState(false);
         const [lastUpload, setLastUpload] = useState(null);
-        const [fileInputRef] = useRef(null);
+        const fileInputRef = useRef(null);
 
         const handleFileChange = (e) => {
             setFile(e.target.files[0]);
@@ -105,7 +106,6 @@ const Dashboard = () => {
 
                 // Clear form
                 setFile(null);
-                setPassword('');
                 if (fileInputRef.current) {
                     fileInputRef.current.value = '';
                 }
