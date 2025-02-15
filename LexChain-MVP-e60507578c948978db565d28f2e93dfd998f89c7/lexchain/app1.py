@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
+from werkzeug.urls import quote
 
 # Load environment variables from .env file
 load_dotenv()
@@ -693,9 +694,9 @@ def auth_callback():
         
         print(f"Attempting to acquire token with code: {code[:10]}...")
         
-        # Get token
+        # Get token using updated URL encoding
         result = msal_app.acquire_token_by_authorization_code(
-            code=code,
+            code=quote(code),
             scopes=API_SCOPES,
             redirect_uri=REDIRECT_URI
         )
@@ -710,7 +711,7 @@ def auth_callback():
                     authority="https://login.microsoftonline.com/common"
                 )
                 result = msal_app.acquire_token_by_authorization_code(
-                    code=code,
+                    code=quote(code),
                     scopes=API_SCOPES,
                     redirect_uri=REDIRECT_URI
                 )
