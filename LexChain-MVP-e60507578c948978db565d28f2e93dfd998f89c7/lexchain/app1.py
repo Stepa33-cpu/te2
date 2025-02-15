@@ -635,7 +635,7 @@ def get_user():
         }
     })
 
-@app.route("/auth/url", methods=["GET"])
+@app.route('/api/auth/url', methods=["GET"])
 def get_auth_url():
     try:
         msal_app = ConfidentialClientApplication(
@@ -646,7 +646,7 @@ def get_auth_url():
         
         state = secrets.token_urlsafe(32)
         auth_url = msal_app.get_authorization_request_url(
-            scopes=API_SCOPES,  # Only use API scopes
+            scopes=API_SCOPES,
             state=state,
             redirect_uri=REDIRECT_URI,
             prompt='select_account',
@@ -657,23 +657,13 @@ def get_auth_url():
         if 'organizations' in auth_url:
             auth_url = auth_url.replace('/organizations/', '/common/')
         
-        print(f"Generated auth URL with client_id: {APPLICATION_ID}")
-        print(f"Auth URL: {auth_url}")
-        
         return jsonify({
             "url": auth_url,
             "state": state
         })
     except Exception as e:
         print(f"Error generating auth URL: {str(e)}")
-        error_details = {
-            "error": str(e),
-            "application_id": APPLICATION_ID is not None,
-            "scopes": API_SCOPES,
-            "redirect_uri": REDIRECT_URI,
-            "authority": AUTHORITY_URL
-        }
-        return jsonify(error_details), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/callback')
 def auth_callback():
@@ -725,36 +715,37 @@ def auth_callback():
                 if sessions[sid].get("user_id") == user_id:
                     sessions.pop(sid)
 
-        # Create new session
+        # Create new session with user_info structure
         session_id = secrets.token_urlsafe(32)
+        user_info = {
+            "id": user_id,
+            "name": result.get("id_token_claims", {}).get("name")
+        }
+        
         sessions[session_id] = {
             "access_token": result["access_token"],
             "refresh_token": result.get("refresh_token"),
-            "user_id": user_id,
-            "name": result.get("id_token_claims", {}).get("name"),
+            "user_info": user_info,  # Store user info in a consistent structure
             "expires_at": datetime.now() + timedelta(seconds=result.get("expires_in", 3600))
         }
 
-        print(f"Successfully created session for user: {sessions[session_id].get('name')}")
-
-        # Redirect to frontend with session cookie
-        response = make_response(redirect(FRONTEND_URL))
+        # Set cookie and redirect
+        response = redirect(FRONTEND_URL)
         response.set_cookie(
             'session_id',
             session_id,
             httponly=True,
             secure=True,
             samesite='Lax',
-            max_age=3600  # 1 hour
+            max_age=3600
         )
-        
         return response
 
     except Exception as e:
-        print(f"Error in auth callback: {str(e)}")
+        print(f"Auth callback error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/auth/logout", methods=["POST"])
+@app.route('/api/auth/logout', methods=["POST"])
 def logout():
     session_id = request.cookies.get('session_id')
     if session_id:
