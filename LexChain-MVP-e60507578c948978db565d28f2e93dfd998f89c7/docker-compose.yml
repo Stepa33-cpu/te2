@@ -4,8 +4,8 @@ services:
       context: ./lexchain-newdash/tailwindcss4
       dockerfile: Dockerfile
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
     volumes:
       - ./ssl:/etc/nginx/ssl
       - ./nginx/logs:/var/log/nginx

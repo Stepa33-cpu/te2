@@ -620,20 +620,18 @@ class SecureFileManager:
             json.dump(logs, f, indent=2)
 
 # ----------------- Auth Routes -----------------
-@app.route('/api/user', methods=['GET'])
+@app.route('/api/user')
 def get_user():
     session_id = request.cookies.get('session_id')
     if not session_id or session_id not in sessions:
         return jsonify({"authenticated": False}), 401
-
-    session_data = sessions[session_id]
-    print("Session data:", session_data)  # Add this debug line
-
+    
+    user_info = sessions[session_id].get('user_info', {})
     return jsonify({
         "authenticated": True,
         "user": {
-            "name": session_data.get("name"),
-            "id": session_data.get("user_id")
+            "name": user_info.get('name'),
+            "id": user_info.get('id')
         }
     })
 
@@ -766,7 +764,7 @@ def logout():
     response.delete_cookie('session_id')
     return response
 
-@app.route('/login')
+@app.route('/api/login')
 def login():
     client_instance = ConfidentialClientApplication(
         client_id=APPLICATION_ID,
