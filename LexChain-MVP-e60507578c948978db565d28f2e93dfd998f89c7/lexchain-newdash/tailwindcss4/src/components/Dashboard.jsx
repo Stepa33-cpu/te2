@@ -34,7 +34,7 @@ import logo from '../assets/images/lexchain_logo.png';
 const Dashboard = () => {
     const { logout, user } = useAuth();
     const [activeTab, setActiveTab] = useState('files');
-    const [myFilesPassword, setMyFilesPassword] = useState('');
+    const [password, setPassword] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [lastUploadedFile, setLastUploadedFile] = useState(null);
     const [logs, setLogs] = useState([]);
@@ -58,245 +58,167 @@ const Dashboard = () => {
     ];
 
     const FileManagement = () => {
-        const fileInputRef = useRef(null);
-        const [isUploading, setIsUploading] = useState(false);
-        const [uploadStatus, setUploadStatus] = useState('');
-        const [fileMasterPassword, setFileMasterPassword] = useState('');
-        const [uploadResult, setUploadResult] = useState(null);
+        const [file, setFile] = useState(null);
+        const [uploading, setUploading] = useState(false);
+        const [lastUpload, setLastUpload] = useState(null);
+        const [fileInputRef] = useRef(null);
 
-        const handleFileSelect = (event) => {
-            const file = event.target.files[0];
-            if (file) {
-                setSelectedFile(file);
-                setUploadStatus('');
-                setUploadResult(null);
-                setLastUploadedFile(null);
-            }
+        const handleFileChange = (e) => {
+            setFile(e.target.files[0]);
+            setError(null);
         };
 
-        const handleDragOver = (event) => {
-            event.preventDefault();
-        };
-
-        const handleDrop = (event) => {
-            event.preventDefault();
-            const file = event.dataTransfer.files[0];
-            if (file) {
-                setSelectedFile(file);
-                setUploadStatus('');
-                setUploadResult(null);
-                setLastUploadedFile(null);
-            }
-        };
-
-        const openFileDialog = () => {
-            fileInputRef.current.click();
-        };
-
-        const handleFileUpload = async () => {
-            if (!selectedFile || !fileMasterPassword) {
-                setUploadResult({
-                    success: false,
-                    message: "Please select a file and enter the master password."
-                });
+        const handleUpload = async (e) => {
+            e.preventDefault();
+            if (!file || !password) {
+                setError("Please select a file and enter a password");
                 return;
             }
 
-            const formData = new FormData();
-            formData.append("file", selectedFile);
-            formData.append("password", fileMasterPassword);
+            setUploading(true);
+            setError(null);
 
-            setIsUploading(true);
-            setUploadResult(null);
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('password', password);
 
             try {
-                const response = await fetch("https://dashboard.lexchain.net/api/upload", {
-                    method: "POST",
-                    body: formData,
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
                     credentials: 'include',
-                    // Don't set Content-Type header, let the browser set it with the boundary
+                    body: formData
                 });
 
+                const data = await response.json();
+
                 if (!response.ok) {
-                    throw new Error(`Upload failed: ${response.statusText}`);
+                    throw new Error(data.error || 'Upload failed');
                 }
 
-                const contentType = response.headers.get("content-type");
-                let data;
-                if (contentType && contentType.includes("application/json")) {
-                    data = await response.json();
-                } else {
-                    throw new Error("Invalid response format from server");
-                }
-
-                setUploadResult({
-                    success: true,
-                    message: "File uploaded successfully!",
-                    fileId: data.file_id
+                // Set last upload information
+                setLastUpload({
+                    filename: file.name,
+                    status: 'success',
+                    timestamp: new Date().toLocaleTimeString(),
+                    size: (file.size / (1024 * 1024)).toFixed(2) + ' MB'
                 });
 
                 // Clear form
-                setSelectedFile(null);
-                setFileMasterPassword('');
-                
+                setFile(null);
+                setPassword('');
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+
             } catch (error) {
-                console.error("Error during file upload:", error);
-                setUploadResult({
-                    success: false,
-                    message: `Error during file upload: ${error.message}`
+                console.error('Error during file upload:', error);
+                setError(error.message || 'Upload failed');
+                
+                // Set last upload information for failed upload
+                setLastUpload({
+                    filename: file.name,
+                    status: 'failed',
+                    timestamp: new Date().toLocaleTimeString(),
+                    error: error.message
                 });
             } finally {
-                setIsUploading(false);
+                setUploading(false);
             }
         };
 
         return (
-            <div className="h-full p-6 space-y-6">
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
+            <div className="p-6 space-y-6">
+                <div className="flex justify-between items-center">
+                    <h1 className="text-2xl font-bold text-gray-800">File Management</h1>
+                </div>
+
+                <form onSubmit={handleUpload} className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <label htmlFor="file" className="text-gray-700">
+                            File
+                        </label>
+                    </div>
                     <input
                         type="file"
+                        id="file"
+                        onChange={handleFileChange}
                         ref={fileInputRef}
-                        onChange={handleFileSelect}
-                        className="hidden"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-gray-700"
                     />
-                    <div
-                        className="border-2 border-dashed border-blue-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-colors"
-                        onClick={openFileDialog}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                    >
-                        <Upload className="mx-auto mb-4 text-blue-500" size={32} />
-                        <p className="text-gray-600 mb-2">
-                            {selectedFile
-                                ? `Selected: ${selectedFile.name}`
-                                : 'Drag and drop files here or click to upload'
-                            }
-                        </p>
-                        {uploadStatus && (
-                            <p className={`text-sm mt-2 ${
-                                uploadStatus.includes('error') || uploadStatus.includes('Please') 
-                                    ? 'text-red-500' 
-                                    : uploadStatus.includes('successful') 
-                                        ? 'text-green-500' 
-                                        : 'text-blue-500'
-                            }`}>
-                                {uploadStatus}
-                            </p>
-                        )}
-                    </div>
 
-                    {uploadResult && (
-                        <div className={`mt-4 p-4 rounded-lg ${
-                            uploadResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-                        }`}>
-                            <p className={`font-medium ${
-                                uploadResult.success ? 'text-green-700' : 'text-red-700'
-                            }`}>
-                                {uploadResult.message}
-                            </p>
-                            {uploadResult.fileId && (
-                                <p className="text-sm mt-1 text-green-600">
-                                    File ID: {uploadResult.fileId}
-                                </p>
-                            )}
+                    <div className="flex justify-between items-center">
+                        <label htmlFor="password" className="text-gray-700">
+                            Password
+                        </label>
+                    </div>
+                    <input
+                        type="password"
+                        id="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 text-gray-700"
+                    />
+
+                    {error && (
+                        <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                            {error}
                         </div>
                     )}
 
-                    <div className="mt-4 flex items-center justify-center space-x-4">
-                        <input
-                            type="password"
-                            placeholder="Master Password"
-                            className="px-4 py-2 border border-gray-200 rounded-lg w-64"
-                            value={fileMasterPassword}
-                            onChange={(e) => setFileMasterPassword(e.target.value)}
-                        />
-                        <button
-                            onClick={handleFileUpload}
-                            disabled={isUploading}
-                            className={`px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 inline-flex items-center space-x-2 ${
-                                isUploading ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                        >
-                            {isUploading ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                                    <span>Uploading...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <CheckCircle size={20} />
-                                    <span>Confirm</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
+                    {/* Last Upload Status */}
+                    {lastUpload && (
+                        <div className={`p-4 rounded-lg ${
+                            lastUpload.status === 'success' 
+                                ? 'bg-green-50 border border-green-200' 
+                                : 'bg-red-50 border border-red-200'
+                        }`}>
+                            <h3 className="font-semibold mb-2">Last Upload</h3>
+                            <div className="space-y-1">
+                                <p><span className="font-medium">File:</span> {lastUpload.filename}</p>
+                                <p><span className="font-medium">Time:</span> {lastUpload.timestamp}</p>
+                                {lastUpload.size && (
+                                    <p><span className="font-medium">Size:</span> {lastUpload.size}</p>
+                                )}
+                                <p><span className="font-medium">Status:</span> 
+                                    <span className={lastUpload.status === 'success' ? 'text-green-600' : 'text-red-600'}>
+                                        {lastUpload.status === 'success' ? 'Successful' : 'Failed'}
+                                    </span>
+                                </p>
+                                {lastUpload.error && (
+                                    <p className="text-red-600"><span className="font-medium">Error:</span> {lastUpload.error}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                    <h3 className="text-xl font-semibold mb-4 text-gray-800">Last Upload Status</h3>
-                    <table className="w-full">
-                        <thead>
-                            <tr className="text-left border-b border-gray-200">
-                                <th className="pb-3 text-gray-600">Name</th>
-                                <th className="pb-3 text-gray-600">Date</th>
-                                <th className="pb-3 text-gray-600">Size</th>
-                                <th className="pb-3 text-gray-600">Status</th>
-                                <th className="pb-3 text-gray-600">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {!lastUploadedFile ? (
-                                <tr>
-                                    <td colSpan="5" className="py-4 text-center text-gray-500">
-                                        No files uploaded yet
-                                    </td>
-                                </tr>
-                            ) : (
-                                <tr className="border-b border-gray-100">
-                                    <td className="py-3 text-gray-700">{lastUploadedFile.name}</td>
-                                    <td className="text-gray-600">{lastUploadedFile.date}</td>
-                                    <td className="text-gray-600">{lastUploadedFile.size} MB</td>
-                                    <td>
-                                        <span className={`px-2 py-1 rounded-full text-sm ${
-                                            lastUploadedFile.status === 'Upload Successful' 
-                                                ? 'bg-green-100 text-green-700'
-                                                : lastUploadedFile.status === 'Uploading...'
-                                                    ? 'bg-blue-100 text-blue-700'
-                                                    : 'bg-red-100 text-red-700'
-                                        }`}>
-                                            {lastUploadedFile.status}
-                                        </span>
-                                    </td>
-                                    <td className="space-x-2">
-                                        <button 
-                                            className={`p-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 ${
-                                                lastUploadedFile.status !== 'Upload Successful' ? 'opacity-50 cursor-not-allowed' : ''
-                                            }`}
-                                            disabled={lastUploadedFile.status !== 'Upload Successful'}
-                                        >
-                                            <Download size={16} />
-                                        </button>
-                                        <button 
-                                            className={`p-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 ${
-                                                lastUploadedFile.status !== 'Upload Successful' ? 'opacity-50 cursor-not-allowed' : ''
-                                            }`}
-                                            disabled={lastUploadedFile.status !== 'Upload Successful'}
-                                        >
-                                            <Eye size={16} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                    <button
+                        type="submit"
+                        disabled={uploading || !file || !password}
+                        className={`w-full py-2 px-4 rounded-lg text-white font-medium ${
+                            uploading || !file || !password
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                    >
+                        {uploading ? (
+                            <div className="flex items-center justify-center">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Uploading...
+                            </div>
+                        ) : (
+                            'Upload File'
+                        )}
+                    </button>
+                </form>
             </div>
         );
     };
 
     const MyFiles = () => {
         const [searchTerm, setSearchTerm] = useState('');
-        const [myFilesPassword, setMyFilesPassword] = useState('');
         const [files, setFiles] = useState([]);
         const [isLoading, setIsLoading] = useState(false);
         const [error, setError] = useState(null);
@@ -304,7 +226,7 @@ const Dashboard = () => {
         const [deletingFileId, setDeletingFileId] = useState(null);
 
         const handleShowFiles = async () => {
-            if (!myFilesPassword) {
+            if (!password) {
                 setError("Please enter the master password");
                 return;
             }
@@ -313,7 +235,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("https://dashboard.lexchain.net/api/files/filtered", {
+                const response = await fetch("/api/files/filtered", {
                     method: "POST",
                     credentials: 'include',
                     headers: {
@@ -321,7 +243,7 @@ const Dashboard = () => {
                         'Accept': 'application/json'
                     },
                     body: JSON.stringify({
-                        password: myFilesPassword
+                        password: password
                     })
                 });
 
@@ -346,7 +268,7 @@ const Dashboard = () => {
         };
 
         const handleDownload = async (fileId, fileName) => {
-            if (!myFilesPassword) {
+            if (!password) {
                 setError("Please enter the master password to download files");
                 return;
             }
@@ -363,7 +285,7 @@ const Dashboard = () => {
                     },
                     body: JSON.stringify({
                         file_id: fileId,
-                        password: myFilesPassword
+                        password: password
                     })
                 });
 
@@ -394,7 +316,7 @@ const Dashboard = () => {
         };
 
         const handleDelete = async (fileId, fileName) => {
-            if (!myFilesPassword) {
+            if (!password) {
                 setError("Please enter the master password to delete files");
                 return;
             }
@@ -415,7 +337,7 @@ const Dashboard = () => {
                     },
                     body: JSON.stringify({
                         file_id: fileId,
-                        password: myFilesPassword
+                        password: password
                     })
                 });
 
@@ -455,14 +377,14 @@ const Dashboard = () => {
                     <div className="flex space-x-2">
                         <input
                             type="password"
-                            placeholder="Master Password"
+                            placeholder="Enter master password"
                             className="w-64 px-4 py-2 border border-gray-200 rounded-lg"
-                            value={myFilesPassword}
-                            onChange={(e) => setMyFilesPassword(e.target.value)}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
                         />
                         <button
                             onClick={handleShowFiles}
-                            disabled={isLoading}
+                            disabled={!password}
                             className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-lg hover:from-blue-700 hover:to-blue-600 disabled:opacity-50"
                         >
                             {isLoading ? (

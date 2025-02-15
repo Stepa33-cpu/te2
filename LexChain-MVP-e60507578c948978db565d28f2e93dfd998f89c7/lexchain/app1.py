@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from werkzeug.urls import quote
+from werkzeug.exceptions import RequestEntityTooLarge
 
 # Load environment variables from .env file
 load_dotenv()
@@ -82,6 +83,10 @@ if os.getenv('PRODUCTION') == 'true':
         SESSION_COOKIE_SAMESITE='Lax',
         PERMANENT_SESSION_LIFETIME=timedelta(hours=1)
     )
+
+# Add these configurations near the top of the file, after creating the Flask app
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB limit
+app.config['UPLOAD_FOLDER'] = 'temp_uploads'
 
 # ----------------- Storage Paths Setup -----------------
 STORAGE_PATH = Path("secure_storage")
@@ -1019,6 +1024,10 @@ def upload_file():
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
+        # Check file size before processing
+        if request.content_length > app.config['MAX_CONTENT_LENGTH']:
+            return jsonify({"error": "File too large"}), 413
+
         # Check session
         session_id = request.cookies.get('session_id')
         if not session_id or session_id not in sessions:
@@ -1033,7 +1042,7 @@ def upload_file():
 
         # Create secure file manager with all required parameters
         file_manager = SecureFileManager(
-            password=password,  # Changed to use password instead of derived_key
+            password=password,
             access_token=access_token,
             session_id=session_id
         )
@@ -1051,6 +1060,8 @@ def upload_file():
             "message": "File uploaded successfully"
         })
 
+    except RequestEntityTooLarge:
+        return jsonify({"error": "File too large"}), 413
     except Exception as e:
         print(f"Upload error: {str(e)}")
         return jsonify({
