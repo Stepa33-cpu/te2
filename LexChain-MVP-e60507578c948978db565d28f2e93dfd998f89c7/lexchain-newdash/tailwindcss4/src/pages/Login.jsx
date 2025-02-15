@@ -6,8 +6,8 @@ const Login = () => {
     const { login } = useAuth();
 
     const handleLogin = async () => {
-        // Redirect to the existing backend login endpoint
-        window.location.href = 'http://localhost:5000/login';
+        // Redirect to the backend login endpoint
+        window.location.href = 'https://dashboard.lexchain.net/login';
     };
 
     return (

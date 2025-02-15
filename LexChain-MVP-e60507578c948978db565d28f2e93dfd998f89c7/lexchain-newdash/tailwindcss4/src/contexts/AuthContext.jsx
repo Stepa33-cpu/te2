@@ -10,7 +10,7 @@ export const AuthProvider = ({ children }) => {
 
     const login = async () => {
         try {
-            const response = await fetch('http://localhost:5000/auth/url');
+            const response = await fetch('https://dashboard.lexchain.net/auth/url');
             const data = await response.json();
             
             if (data.url) {
@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await fetch('http://localhost:5000/auth/logout', {
+            await fetch('https://dashboard.lexchain.net/auth/logout', {
                 method: 'POST',
                 credentials: 'include'
             });
@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
 
     const checkAuth = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/user', {
+            const response = await fetch('https://dashboard.lexchain.net/api/user', {
                 credentials: 'include'
             });
             

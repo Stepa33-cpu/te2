@@ -1,5 +1,5 @@
-const API_URL = 'http://localhost:5000';
-const FRONTEND_URL = 'http://localhost:5173';
+const API_URL = 'https://dashboard.lexchain.net';
+const FRONTEND_URL = 'https://dashboard.lexchain.net';
 
 export const authService = {
     checkAuth: async () => {

@@ -33,7 +33,7 @@ AUTHORITY_URL = os.getenv('MS_AUTHORITY_URL', 'https://login.microsoftonline.com
 # Separate scopes
 API_SCOPES = os.getenv('MS_SCOPES', 'Files.ReadWrite.All User.Read').split(' ')
 DEFAULT_SCOPES = ['openid', 'profile', 'offline_access']  # These are handled automatically by MSAL
-FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'https://dashboard.lexchain.net')
 REDIRECT_URI = os.getenv('REDIRECT_URI', 'http://localhost:5000/api/auth/callback')
 
 # Debug logging for environment variables

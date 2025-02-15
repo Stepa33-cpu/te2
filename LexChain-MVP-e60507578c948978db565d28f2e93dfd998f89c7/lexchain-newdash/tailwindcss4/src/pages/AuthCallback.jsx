@@ -28,7 +28,7 @@ const AuthCallback = () => {
                 }
 
                 // Exchange code for token
-                const response = await fetch('http://localhost:5000/auth/token', {
+                const response = await fetch('https://dashboard.lexchain.net/auth/token', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {

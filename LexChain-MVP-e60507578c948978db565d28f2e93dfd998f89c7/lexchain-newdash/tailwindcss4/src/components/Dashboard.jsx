@@ -124,7 +124,7 @@ const Dashboard = () => {
             });
 
             try {
-                const response = await fetch("http://localhost:5000/upload", {
+                const response = await fetch("https://dashboard.lexchain.net/upload", {
                     method: "POST",
                     body: formData,
                     credentials: 'include',
@@ -135,7 +135,7 @@ const Dashboard = () => {
                 if (!response.ok) {
                     if (response.status === 401 && data.redirect) {
                         // Session expired, redirect to login
-                        window.location.href = 'http://localhost:5000/login';
+                        window.location.href = 'https://dashboard.lexchain.net/login';
                         return;
                     }
                     throw new Error(data.error || `Upload failed: ${response.statusText}`);
@@ -336,7 +336,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("http://localhost:5000/api/files/filtered", {
+                const response = await fetch("https://dashboard.lexchain.net/api/files/filtered", {
                     method: "POST",
                     credentials: 'include',
                     headers: {
@@ -378,7 +378,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("http://localhost:5000/download", {
+                const response = await fetch("https://dashboard.lexchain.net/download", {
                     method: "POST",
                     credentials: 'include',
                     headers: {
@@ -430,7 +430,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("http://localhost:5000/delete", {
+                const response = await fetch("https://dashboard.lexchain.net/delete", {
                     method: "POST",
                     credentials: 'include',
                     headers: {
@@ -597,7 +597,7 @@ const Dashboard = () => {
             setError('');
             
             try {
-                const response = await fetch('http://localhost:5000/api/blockchain/logs', {
+                const response = await fetch('https://dashboard.lexchain.net/api/blockchain/logs', {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
