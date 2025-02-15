@@ -224,16 +224,16 @@ class SecureFileManager:
     MAX_CONCURRENT_UPLOADS = 3  # Maximum parallel uploads
     UPLOAD_DELAY = 0.5  # Delay between uploads in seconds
 
-    def __init__(self, derived_key=None, access_token=None, session_id=None, password=None):
-        if password:
-            self.derived_key = derive_key(password)
-        else:
-            self.derived_key = derived_key
-            
+    def __init__(self, password=None, access_token=None, session_id=None):
+        if not password:
+            raise ValueError("Password is required for encryption")
+        
+        self.derived_key = derive_key(password)
         self.access_token = access_token
         self.session_id = session_id
         self.aesgcm = AESGCM(self.derived_key)
-        print(f"SecureFileManager initialized with token: {access_token[:10]}...")
+        if access_token:
+            print(f"SecureFileManager initialized with token: {access_token[:10]}...")
         mimetypes.init()
 
     def encrypt_chunk(self, data: bytes) -> bytes:
@@ -626,7 +626,55 @@ class SecureFileManager:
         with open(log_path, 'w') as f:
             json.dump(logs, f, indent=2)
 
-    def store_file(self, file_stream, filename, user_id):
+    def _store_encrypted_file(self, file_id: str, file_content: bytes) -> None:
+        """Store encrypted file content"""
+        try:
+            # Generate nonce for encryption
+            nonce = os.urandom(12)
+            
+            # Encrypt the file content
+            encrypted_content = self.aesgcm.encrypt(nonce, file_content, None)
+            
+            # Create the fragments directory if it doesn't exist
+            fragments_dir = FRAGMENTS_PATH / file_id
+            fragments_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Store the encrypted content with nonce
+            encrypted_file_path = fragments_dir / "content.enc"
+            with open(encrypted_file_path, "wb") as f:
+                f.write(nonce + encrypted_content)
+                
+        except Exception as e:
+            print(f"Error in _store_encrypted_file: {str(e)}")
+            raise
+
+    def _store_metadata(self, file_id: str, metadata: dict) -> None:
+        """Store encrypted metadata"""
+        try:
+            # Encrypt the metadata
+            encrypted_metadata = self.encrypt_dict(metadata)
+            
+            # Create metadata structure
+            metadata_to_store = {
+                "file_id": file_id,
+                "encrypted": encrypted_metadata,
+                "public": {
+                    "creation_date": metadata.get("upload_date"),
+                    "file_type": "encrypted"
+                }
+            }
+            
+            # Save to blockchain directory
+            metadata_path = BLOCKCHAIN_METADATA_PATH / f"tx_{file_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            with open(metadata_path, "w") as f:
+                json.dump(metadata_to_store, f, indent=2)
+                
+        except Exception as e:
+            print(f"Error in _store_metadata: {str(e)}")
+            raise
+
+    def store_file(self, file_stream, filename: str, user_id: str) -> str:
+        """Store a file with encryption"""
         try:
             # Generate a unique file ID
             file_id = str(uuid.uuid4())
@@ -641,10 +689,11 @@ class SecureFileManager:
                 "size": len(file_content),
                 "user_id": user_id,
                 "upload_date": datetime.now().isoformat(),
-                "status": "active"
+                "status": "active",
+                "mime_type": self.detect_mime_type(filename)
             }
             
-            # Encrypt and store file content
+            # Store encrypted file content
             self._store_encrypted_file(file_id, file_content)
             
             # Store encrypted metadata
@@ -952,7 +1001,7 @@ def upload_file():
 
         # Create secure file manager with all required parameters
         file_manager = SecureFileManager(
-            derived_key=derive_key(password),
+            password=password,  # Changed to use password instead of derived_key
             access_token=access_token,
             session_id=session_id
         )
