@@ -1,0 +1,44 @@
+services:
+  frontend:
+    build:
+      context: ./lexchain-newdash/tailwindcss4
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - lexchain-network
+
+  backend:
+    build:
+      context: ./lexchain
+      dockerfile: Dockerfile
+    environment:
+      - PRODUCTION=true
+      - FLASK_APP=app1.py
+      - FLASK_ENV=production
+    env_file:
+      - ./lexchain/.env
+    volumes:
+      - ./lexchain/secure_storage:/app/secure_storage
+      - ./logs:/app/logs
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - lexchain-network
+
+networks:
+  lexchain-network:
+    driver: bridge 

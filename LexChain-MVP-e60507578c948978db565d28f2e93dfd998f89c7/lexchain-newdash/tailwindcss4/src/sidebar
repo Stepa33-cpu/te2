@@ -1,0 +1,50 @@
+<div className="w-screen h-screen overflow-hidden bg-gradient-to-br from-gray-50 to-white text-gray-800">
+            <div className="w-full h-full flex">
+                {/* Improved Sidebar */}
+                <div className="h-full w-56 flex-shrink-0 bg-blue-900 p-4 flex flex-col">
+                    {/* Updated Header */}
+                    <div className="mb-1">
+                        <h1 className="text-[4px] font-medium text-white tracking-normal">
+                            LexChain
+                        </h1>
+                    </div>
+
+                    {/* Updated Navigation */}
+                    <nav className="flex-1 space-y-1">
+                        {navItems.map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => setActiveTab(item.id)}
+                                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                                    activeTab === item.id
+                                        ? 'text-white bg-blue-800/50'
+                                        : 'text-blue-100 hover:bg-blue-800/30'
+                                }`}
+                            >
+                                <span className="opacity-75">{item.icon}</span>
+                                <span className="text-sm font-medium">{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+
+                    {/* Updated Logout Button */}
+                    <button className="flex items-center space-x-3 px-3 py-2 text-blue-100 hover:bg-blue-800/30 rounded-lg transition-colors">
+            <span className="opacity-75">
+              <LogOut size={20} />
+            </span>
+                        <span className="text-sm font-medium">Logout</span>
+                    </button>
+                </div>
+
+                {/* Main Content */}
+                <div className="flex-1 h-full w-full overflow-hidden bg-gray-50">
+                    <div className="h-full w-full overflow-auto">
+                        {activeTab === 'files' && <FileManagement />}
+                        {activeTab === 'myfiles' && <MyFiles />}
+                        {activeTab === 'blockchain' && <BlockchainVerification />}
+                        {activeTab === 'monitor' && <SystemMonitoring />}
+                        {activeTab === 'settings' && <SettingsPage />}
+                    </div>
+                </div>
+            </div>
+        </div>
