@@ -13,9 +13,11 @@ RUN useradd -m -r -s /bin/bash appuser
 # Create necessary directories with correct permissions
 RUN mkdir -p /app/logs \
     /app/secure_storage/blockchain/metadata \
-    /app/secure_storage/blockchain/logs && \
+    /app/secure_storage/blockchain/logs \
+    /app/temp_downloads && \
     chown -R appuser:appuser /app && \
-    chmod -R 755 /app/secure_storage
+    chmod -R 755 /app/secure_storage && \
+    chmod -R 777 /app/temp_downloads  # Ensure write permissions
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

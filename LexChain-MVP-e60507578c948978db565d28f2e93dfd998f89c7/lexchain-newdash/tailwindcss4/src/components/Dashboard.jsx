@@ -76,6 +76,13 @@ const Dashboard = () => {
                 return;
             }
 
+            // Check file size before uploading (50MB limit)
+            const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+            if (file.size > maxSize) {
+                setError(`File size exceeds 50MB limit. Current size: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+                return;
+            }
+
             setUploading(true);
             setError(null);
 
@@ -89,6 +96,10 @@ const Dashboard = () => {
                     credentials: 'include',
                     body: formData
                 });
+
+                if (response.status === 413) {
+                    throw new Error('File size too large. Maximum size is 50MB.');
+                }
 
                 const data = await response.json();
 

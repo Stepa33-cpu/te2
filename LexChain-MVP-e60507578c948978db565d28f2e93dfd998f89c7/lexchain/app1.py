@@ -1090,45 +1090,56 @@ def download_file():
         )
 
         # Create temp directory for output
-        temp_dir = Path("temp_downloads")
+        temp_dir = Path("/app/temp_downloads")
         temp_dir.mkdir(parents=True, exist_ok=True)
-        output_path = temp_dir / f"download_{file_id}"
+        
+        # Generate a unique temporary filename
+        temp_filename = f"download_{file_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        output_path = temp_dir / temp_filename
 
-        # Attempt to download and rebuild the file
-        rebuilt_file_path = file_manager.rebuild_file(file_id, str(output_path))
+        try:
+            # Attempt to download and rebuild the file
+            rebuilt_file_path = file_manager.rebuild_file(file_id, str(output_path))
 
-        # Get metadata for filename and mime type
-        metadata_files = list(BLOCKCHAIN_METADATA_PATH.glob(f"tx_{file_id}_*.json"))
-        if not metadata_files:
-            return jsonify({"error": "File not found"}), 404
+            # Get metadata for filename and mime type
+            metadata_files = list(BLOCKCHAIN_METADATA_PATH.glob(f"tx_{file_id}_*.json"))
+            if not metadata_files:
+                return jsonify({"error": "File not found"}), 404
 
-        with open(metadata_files[0], 'r') as f:
-            stored_metadata = json.load(f)
-            decrypted_metadata = decrypt_dict(file_manager.aesgcm, stored_metadata.get('encrypted', {}))
+            with open(metadata_files[0], 'r') as f:
+                stored_metadata = json.load(f)
+                decrypted_metadata = decrypt_dict(file_manager.aesgcm, stored_metadata.get('encrypted', {}))
 
-        return send_file(
-            rebuilt_file_path,
-            as_attachment=True,
-            download_name=decrypted_metadata.get("filename", "downloaded_file"),
-            mimetype=decrypted_metadata.get("mime_type", "application/octet-stream")
-        )
+            response = send_file(
+                rebuilt_file_path,
+                as_attachment=True,
+                download_name=decrypted_metadata.get("filename", "downloaded_file"),
+                mimetype=decrypted_metadata.get("mime_type", "application/octet-stream")
+            )
+
+            # Clean up after sending
+            @response.call_on_close
+            def cleanup():
+                try:
+                    if Path(rebuilt_file_path).exists():
+                        os.remove(rebuilt_file_path)
+                except Exception as e:
+                    print(f"Error cleaning up temporary file: {e}")
+
+            return response
+
+        except Exception as e:
+            # Clean up on error
+            if 'rebuilt_file_path' in locals() and Path(rebuilt_file_path).exists():
+                try:
+                    os.remove(rebuilt_file_path)
+                except Exception:
+                    pass
+            raise
 
     except Exception as e:
         print(f"Error in download_file: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
-    finally:
-        # Clean up temporary files
-        if 'rebuilt_file_path' in locals():
-            try:
-                os.remove(rebuilt_file_path)
-            except Exception:
-                pass
-        if 'temp_dir' in locals() and temp_dir.exists():
-            try:
-                temp_dir.rmdir()
-            except Exception:
-                pass
 
 @app.route("/api/delete", methods=["POST"])
 def delete_file():

@@ -30,6 +30,7 @@ services:
     volumes:
       - ./lexchain:/app:rw
       - ./logs:/app/logs:rw
+      - temp_downloads:/app/temp_downloads:rw
     expose:
       - "5000"
     healthcheck:
@@ -44,3 +45,6 @@ services:
 networks:
   lexchain-network:
     driver: bridge 
+
+volumes:
+  temp_downloads: 
