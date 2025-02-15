@@ -19,10 +19,6 @@ services:
     build:
       context: ./lexchain
       dockerfile: Dockerfile
-    volumes:
-      - type: bind
-        source: ./secure_storage
-        target: /app/secure_storage
     environment:
       - PRODUCTION=true
       - FLASK_APP=app1.py
@@ -34,6 +30,9 @@ services:
     volumes:
       - ./lexchain:/app:rw
       - ./logs:/app/logs:rw
+      - type: bind
+        source: ./secure_storage
+        target: /app/secure_storage
     expose:
       - "5000"
     healthcheck:
