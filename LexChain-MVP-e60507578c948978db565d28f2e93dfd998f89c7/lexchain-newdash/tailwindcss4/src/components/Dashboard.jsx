@@ -99,12 +99,6 @@ const Dashboard = () => {
                     success: false,
                     message: "Please select a file and enter the master password."
                 });
-                setLastUploadedFile({
-                    name: selectedFile?.name || 'Unknown',
-                    date: new Date().toISOString().split('T')[0],
-                    size: selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(2) : 0,
-                    status: 'Failed - Missing Password'
-                });
                 return;
             }
 
@@ -115,38 +109,25 @@ const Dashboard = () => {
             setIsUploading(true);
             setUploadResult(null);
 
-            // Set uploading status immediately
-            setLastUploadedFile({
-                name: selectedFile.name,
-                date: new Date().toISOString().split('T')[0],
-                size: (selectedFile.size / (1024 * 1024)).toFixed(2),
-                status: 'Uploading...'
-            });
-
             try {
-                const response = await fetch("https://dashboard.lexchain.net/upload", {
+                const response = await fetch("https://dashboard.lexchain.net/api/upload", {
                     method: "POST",
                     body: formData,
                     credentials: 'include',
+                    // Don't set Content-Type header, let the browser set it with the boundary
                 });
 
-                const data = await response.json();
-
                 if (!response.ok) {
-                    if (response.status === 401 && data.redirect) {
-                        // Session expired, redirect to login
-                        window.location.href = 'https://dashboard.lexchain.net/login';
-                        return;
-                    }
-                    throw new Error(data.error || `Upload failed: ${response.statusText}`);
+                    throw new Error(`Upload failed: ${response.statusText}`);
                 }
 
-                // Update status but keep the file info
-                setLastUploadedFile(prev => ({
-                    ...prev,
-                    status: 'Upload Successful',
-                    fileId: data.file_id
-                }));
+                const contentType = response.headers.get("content-type");
+                let data;
+                if (contentType && contentType.includes("application/json")) {
+                    data = await response.json();
+                } else {
+                    throw new Error("Invalid response format from server");
+                }
 
                 setUploadResult({
                     success: true,
@@ -154,19 +135,15 @@ const Dashboard = () => {
                     fileId: data.file_id
                 });
 
-                // Only clear the form inputs
+                // Clear form
                 setSelectedFile(null);
                 setFileMasterPassword('');
+                
             } catch (error) {
                 console.error("Error during file upload:", error);
-                // Update status but keep the file info
-                setLastUploadedFile(prev => ({
-                    ...prev,
-                    status: 'Upload Failed'
-                }));
                 setUploadResult({
                     success: false,
-                    message: error.message || "An error occurred while uploading the file."
+                    message: `Error during file upload: ${error.message}`
                 });
             } finally {
                 setIsUploading(false);

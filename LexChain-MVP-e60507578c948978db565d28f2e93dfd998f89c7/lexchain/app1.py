@@ -67,6 +67,10 @@ def after_request(response):
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Cookie'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
         response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie, Cookie'
+        
+        # Handle preflight requests
+        if request.method == 'OPTIONS':
+            return response
     return response
 
 # Add production configurations
@@ -618,6 +622,44 @@ class SecureFileManager:
         with open(log_path, 'w') as f:
             json.dump(logs, f, indent=2)
 
+    def store_file(self, file_stream, filename, user_id):
+        try:
+            # Generate a unique file ID
+            file_id = str(uuid.uuid4())
+            
+            # Read file content
+            file_content = file_stream.read()
+            
+            # Create metadata
+            metadata = {
+                "id": file_id,
+                "filename": filename,
+                "size": len(file_content),
+                "user_id": user_id,
+                "upload_date": datetime.now().isoformat(),
+                "status": "active"
+            }
+            
+            # Encrypt and store file content
+            self._store_encrypted_file(file_id, file_content)
+            
+            # Store encrypted metadata
+            self._store_metadata(file_id, metadata)
+            
+            # Log the action
+            self.log_action("upload", {
+                "file_id": file_id,
+                "user_id": user_id,
+                "filename": filename,
+                "size": len(file_content)
+            })
+            
+            return file_id
+            
+        except Exception as e:
+            print(f"Error in store_file: {str(e)}")
+            raise Exception(f"Failed to store file: {str(e)}")
+
 # ----------------- Auth Routes -----------------
 @app.route('/api/user')
 def get_user():
@@ -876,58 +918,55 @@ def refresh_token_if_needed(session_data):
         return False
 
 # ----------------- File Operation Routes -----------------
-@app.route("/upload", methods=["POST"])
+@app.route('/api/upload', methods=['POST'])
 def upload_file():
-    session_id = request.cookies.get('session_id')
-    if not session_id or session_id not in sessions:
-        print("No valid session found")
-        return jsonify({"error": "Not authenticated"}), 401
-
     try:
-        session_data = sessions[session_id]
-        print(f"Processing upload for user: {session_data.get('name')}")
-        
-        # Initial token refresh
-        if not refresh_token_if_needed(session_data):
-            print("Token refresh failed, redirecting to login")
-            return jsonify({"error": "Session expired", "redirect": True}), 401
-
-        print(f"Using access token: {session_data['access_token'][:10]}...")
-
-        if "file" not in request.files:
+        # Check if file and password are in request
+        if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
+        
+        if 'password' not in request.form:
+            return jsonify({"error": "No password provided"}), 400
 
-        file = request.files["file"]
-        master_password = request.form.get("password")
-        if not master_password:
-            return jsonify({"error": "Master password required"}), 400
+        file = request.files['file']
+        password = request.form['password']
+        
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
 
-        temp_dir = Path("temp_uploads")
-        temp_dir.mkdir(exist_ok=True)
-        file_path = temp_dir / file.filename
-        file.save(file_path)
+        # Check session
+        session_id = request.cookies.get('session_id')
+        if not session_id or session_id not in sessions:
+            return jsonify({"error": "Not authenticated", "redirect": True}), 401
 
-        try:
-            derived_key = derive_key(master_password)
-            manager = SecureFileManager(
-                derived_key=derived_key,
-                access_token=session_data['access_token'],
-                session_id=session_id  # Pass session_id
-            )
-            file_id = manager.fragment_file(str(file_path))
-            return jsonify({"message": "File uploaded and encrypted successfully!", "file_id": file_id})
-        except Exception as e:
-            print(f"Error during file processing: {str(e)}")
-            return jsonify({"error": str(e)}), 500
-        finally:
-            if file_path.exists():
-                file_path.unlink()
-            if temp_dir.exists() and not any(temp_dir.iterdir()):
-                temp_dir.rmdir()
+        # Get user info
+        user_info = sessions[session_id].get('user_info', {})
+        user_id = user_info.get('id')
+        
+        if not user_id:
+            return jsonify({"error": "User ID not found"}), 401
+
+        # Create secure file manager
+        file_manager = SecureFileManager(password)
+        
+        # Process and store the file
+        file_id = file_manager.store_file(
+            file_stream=file.stream,
+            filename=file.filename,
+            user_id=user_id
+        )
+
+        return jsonify({
+            "success": True,
+            "file_id": file_id,
+            "message": "File uploaded successfully"
+        })
 
     except Exception as e:
-        print(f"Error in upload_file: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        print(f"Upload error: {str(e)}")
+        return jsonify({
+            "error": f"Upload failed: {str(e)}"
+        }), 500
 
 @app.route("/download", methods=["POST"])
 def download_file():
