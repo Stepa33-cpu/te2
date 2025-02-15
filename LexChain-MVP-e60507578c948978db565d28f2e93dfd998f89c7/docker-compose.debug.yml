@@ -1,0 +1,16 @@
+services:
+  backend:
+    build:
+      context: ./lexchain
+      dockerfile: Dockerfile.debug
+    environment:
+      - FLASK_APP=app1.py
+      - FLASK_ENV=development
+      - PYTHONUNBUFFERED=1
+      - FLASK_DEBUG=1
+    env_file:
+      - ./lexchain/.env
+    volumes:
+      - ./lexchain:/app:rw
+    ports:
+      - "5000:5000" 

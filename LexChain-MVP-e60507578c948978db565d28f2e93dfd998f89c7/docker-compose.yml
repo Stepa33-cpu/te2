@@ -23,11 +23,13 @@ services:
       - PRODUCTION=true
       - FLASK_APP=app1.py
       - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+      - GUNICORN_CMD_ARGS="--reload --log-level=debug"
     env_file:
       - ./lexchain/.env
     volumes:
-      - ./lexchain/secure_storage:/app/secure_storage
-      - ./logs:/app/logs
+      - ./lexchain:/app:rw
+      - ./logs:/app/logs:rw
     expose:
       - "5000"
     healthcheck:
