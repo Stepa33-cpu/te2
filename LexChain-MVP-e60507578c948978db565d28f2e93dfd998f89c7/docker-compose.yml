@@ -30,11 +30,6 @@ services:
     volumes:
       - ./lexchain:/app:rw
       - ./logs:/app/logs:rw
-      - type: bind
-        source: ./secure_storage
-        target: /app/secure_storage
-        volume:
-          nocopy: true
     expose:
       - "5000"
     healthcheck:

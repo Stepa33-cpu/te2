@@ -450,12 +450,8 @@ class SecureFileManager:
             raise
 
     def rebuild_file(self, file_id: str, output_path: Optional[str] = None) -> str:
-        """Rebuild file from fragments stored in OneDrive"""
+        """Rebuild file from OneDrive fragment"""
         try:
-            # Create temporary directory if needed
-            temp_dir = Path("temp_rebuild")
-            temp_dir.mkdir(exist_ok=True)
-
             # Find and load metadata
             metadata_files = list(BLOCKCHAIN_METADATA_PATH.glob(f"tx_{file_id}_*.json"))
             if not metadata_files:
@@ -465,66 +461,44 @@ class SecureFileManager:
             with open(metadata_files[0], 'r') as f:
                 stored_metadata = json.load(f)
                 encrypted_data = stored_metadata.get('encrypted', {})
-                
-                # Decrypt metadata
-                nonce = base64.b64decode(encrypted_data.get('nonce', ''))
-                ciphertext = base64.b64decode(encrypted_data.get('ciphertext', ''))
-                decrypted_data = self.aesgcm.decrypt(nonce, ciphertext, None)
-                metadata = json.loads(decrypted_data.decode())
+                metadata = decrypt_dict(self.aesgcm, encrypted_data)
 
             if metadata.get("deleted", False):
                 raise ValueError("File has been deleted")
 
-            # Prepare output path
+            # Download encrypted file from OneDrive
+            onedrive_file_id = metadata.get('onedrive_file_id')
+            if not onedrive_file_id:
+                raise ValueError("OneDrive file ID not found in metadata")
+
+            headers = {
+                'Authorization': f'Bearer {self.access_token}'
+            }
+            
+            download_url = f'https://graph.microsoft.com/v1.0/me/drive/items/{onedrive_file_id}/content'
+            response = requests.get(download_url, headers=headers)
+            response.raise_for_status()
+
+            # Extract nonce and decrypt content
+            encrypted_data = response.content
+            nonce = encrypted_data[:12]
+            ciphertext = encrypted_data[12:]
+            decrypted_content = self.aesgcm.decrypt(nonce, ciphertext, None)
+
+            # Write decrypted content to output file
             if output_path is None:
-                output_path = temp_dir / metadata['original_filename']
+                output_path = Path("temp_rebuild") / metadata['filename']
             output_path = Path(output_path)
-
-            fragments = []
-            # Download and decrypt all fragments
-            for fragment_info in metadata.get('fragments', []):
-                # Download fragment from OneDrive
-                headers = {
-                    'Authorization': f'Bearer {self.access_token}'
-                }
-                
-                download_url = f'https://graph.microsoft.com/v1.0/me/drive/items/{fragment_info["onedrive_id"]}/content'
-                response = requests.get(download_url, headers=headers)
-                
-                if response.status_code != 200:
-                    raise ValueError(f"Failed to download fragment {fragment_info['index']}")
-
-                # Decrypt fragment
-                encrypted_fragment = response.content
-                fragment = self.decrypt_chunk(encrypted_fragment)
-
-                # Verify fragment integrity
-                if hashlib.sha256(fragment).hexdigest() != fragment_info['fingerprint']:
-                    raise ValueError(f"Fragment {fragment_info['index']} integrity check failed")
-
-                fragments.append((fragment_info['index'], fragment))
-
-            # Sort fragments by index and combine
-            fragments.sort(key=lambda x: x[0])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
             with open(output_path, 'wb') as f:
-                for _, fragment in fragments:
-                    f.write(fragment)
+                f.write(decrypted_content)
 
             return str(output_path)
 
         except Exception as e:
             print(f"Error rebuilding file: {str(e)}")
             raise
-
-        finally:
-            # Clean up any temporary files except the output file
-            if temp_dir.exists():
-                for file in temp_dir.glob("*"):
-                    if file != output_path:
-                        try:
-                            file.unlink()
-                        except Exception:
-                            pass
 
     def delete_file(self, file_id: str) -> bool:
         """Delete a file and its fragments"""
@@ -679,7 +653,7 @@ class SecureFileManager:
         """Store encrypted metadata"""
         try:
             # Encrypt the metadata
-            encrypted_metadata = self.encrypt_dict(metadata)
+            encrypted_metadata = encrypt_dict(self.aesgcm, metadata)
             
             # Create metadata structure
             metadata_to_store = {
@@ -687,7 +661,8 @@ class SecureFileManager:
                 "encrypted": encrypted_metadata,
                 "public": {
                     "creation_date": metadata.get("upload_date"),
-                    "file_type": "encrypted"
+                    "file_type": "encrypted",
+                    "encrypted_filename": True  # Indicate that filename is encrypted
                 }
             }
             
@@ -709,6 +684,38 @@ class SecureFileManager:
             # Read file content
             file_content = file_stream.read()
             
+            # Generate nonce for encryption
+            nonce = os.urandom(12)
+            
+            # Encrypt the file content
+            encrypted_content = self.aesgcm.encrypt(nonce, file_content, None)
+            
+            # Upload encrypted content directly to OneDrive
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Content-Type': 'application/octet-stream'
+            }
+            
+            # Create upload session for OneDrive
+            folder_name = "LexchainFragments"
+            file_name = f"fragment_{file_id}.enc"
+            
+            # Create folder if it doesn't exist
+            folder_url = 'https://graph.microsoft.com/v1.0/me/drive/root/children'
+            folder_data = {
+                "name": folder_name,
+                "folder": {},
+                "@microsoft.graph.conflictBehavior": "replace"
+            }
+            requests.post(folder_url, headers={**headers, 'Content-Type': 'application/json'}, json=folder_data)
+            
+            # Upload encrypted file
+            upload_url = f'https://graph.microsoft.com/v1.0/me/drive/root:/{folder_name}/{file_name}:/content'
+            upload_response = requests.put(upload_url, headers=headers, data=nonce + encrypted_content)
+            upload_response.raise_for_status()
+            
+            onedrive_file_id = upload_response.json().get('id')
+            
             # Create metadata
             metadata = {
                 "id": file_id,
@@ -717,13 +724,11 @@ class SecureFileManager:
                 "user_id": user_id,
                 "upload_date": datetime.now().isoformat(),
                 "status": "active",
-                "mime_type": self.detect_mime_type(filename)
+                "mime_type": self.detect_mime_type(filename),
+                "onedrive_file_id": onedrive_file_id
             }
             
-            # Store encrypted file content
-            self._store_encrypted_file(file_id, file_content)
-            
-            # Store encrypted metadata
+            # Store encrypted metadata locally
             self._store_metadata(file_id, metadata)
             
             # Log the action
@@ -1052,7 +1057,7 @@ def upload_file():
             "error": f"Upload failed: {str(e)}"
         }), 500
 
-@app.route("/download", methods=["POST"])
+@app.route("/api/download", methods=["POST"])
 def download_file():
     session_id = request.cookies.get('session_id')
     if not session_id or session_id not in sessions:
@@ -1067,16 +1072,15 @@ def download_file():
             return jsonify({"error": "File ID and password required"}), 400
 
         # Create file manager instance
-        derived_key = derive_key(password)
         file_manager = SecureFileManager(
-            derived_key=derived_key,
+            password=password,
             access_token=sessions[session_id]["access_token"],
             session_id=session_id
         )
 
         # Create temp directory for output
         temp_dir = Path("temp_downloads")
-        temp_dir.mkdir(exist_ok=True)
+        temp_dir.mkdir(parents=True, exist_ok=True)
         output_path = temp_dir / f"download_{file_id}"
 
         # Attempt to download and rebuild the file
@@ -1089,43 +1093,16 @@ def download_file():
 
         with open(metadata_files[0], 'r') as f:
             stored_metadata = json.load(f)
-            encrypted_data = stored_metadata.get('encrypted', {})
-            nonce = base64.b64decode(encrypted_data.get('nonce', ''))
-            ciphertext = base64.b64decode(encrypted_data.get('ciphertext', ''))
-            decrypted_data = file_manager.aesgcm.decrypt(nonce, ciphertext, None)
-            metadata = json.loads(decrypted_data.decode())
-
-        # Log the download action
-        log_action(
-            "download",
-            {
-                "file_id": file_id,
-                "filename": metadata.get("original_filename"),
-                "timestamp": datetime.now().isoformat(),
-                "success": True
-            },
-            session_id
-        )
+            decrypted_metadata = decrypt_dict(file_manager.aesgcm, stored_metadata.get('encrypted', {}))
 
         return send_file(
             rebuilt_file_path,
             as_attachment=True,
-            download_name=metadata.get("original_filename", "downloaded_file"),
-            mimetype=metadata.get("mime_type", "application/octet-stream")
+            download_name=decrypted_metadata.get("filename", "downloaded_file"),
+            mimetype=decrypted_metadata.get("mime_type", "application/octet-stream")
         )
 
     except Exception as e:
-        # Log failed download attempt
-        if 'file_id' in locals():
-            log_action(
-                "download_failed",
-                {
-                    "file_id": file_id,
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat()
-                },
-                session_id
-            )
         print(f"Error in download_file: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
@@ -1142,7 +1119,7 @@ def download_file():
             except Exception:
                 pass
 
-@app.route("/delete", methods=["POST"])
+@app.route("/api/delete", methods=["POST"])
 def delete_file():
     session_id = request.cookies.get('session_id')
     if not session_id or session_id not in sessions:
@@ -1151,102 +1128,26 @@ def delete_file():
     try:
         data = request.get_json()
         if not data:
-            print("No data received in request")
             return jsonify({"error": "No data provided"}), 400
 
         file_id = data.get("file_id")
-        master_password = data.get("password")
+        password = data.get("password")
 
-        print(f"Attempting to delete file with ID: {file_id}")
+        if not all([file_id, password]):
+            return jsonify({"error": "File ID and password required"}), 400
 
-        if not all([file_id, master_password]):
-            return jsonify({"error": "File ID and master password required"}), 400
+        # Create file manager instance
+        file_manager = SecureFileManager(
+            password=password,
+            access_token=sessions[session_id]["access_token"],
+            session_id=session_id
+        )
 
-        # Create encryption key from master password
-        derived_key = derive_key(master_password)
-        aesgcm = AESGCM(derived_key)
-
-        # Get file metadata before deletion
-        metadata_files = list(BLOCKCHAIN_METADATA_PATH.glob(f"tx_{file_id}_*.json"))
-        if not metadata_files:
-            print(f"No metadata found for file ID: {file_id}")
-            return jsonify({"error": "File not found"}), 404
-
-        metadata_file = metadata_files[0]
-        print(f"Found metadata file: {metadata_file}")
-
-        try:
-            with open(metadata_file, 'r') as f:
-                stored_metadata = json.load(f)
-                encrypted_data = stored_metadata.get('encrypted', {})
-                
-                if not encrypted_data:
-                    print("No encrypted data found in metadata")
-                    return jsonify({"error": "Invalid metadata format"}), 400
-
-                try:
-                    # Decrypt metadata to get file details
-                    nonce = base64.b64decode(encrypted_data.get('nonce', ''))
-                    ciphertext = base64.b64decode(encrypted_data.get('ciphertext', ''))
-                    decrypted_data = aesgcm.decrypt(nonce, ciphertext, None)
-                    decrypted_metadata = json.loads(decrypted_data.decode())
-
-                    print(f"Successfully decrypted metadata for file: {decrypted_metadata.get('original_filename')}")
-
-                    # Create SecureFileManager instance
-                    manager = SecureFileManager(
-                        derived_key=derived_key,
-                        access_token=sessions[session_id]['access_token'],
-                        session_id=session_id
-                    )
-
-                    # Delete the file
-                    success = manager.delete_file(file_id)
-                    if not success:
-                        print("Failed to delete file using SecureFileManager")
-                        return jsonify({"error": "Failed to delete file"}), 500
-
-                    # Create a deletion log entry
-                    log_entry = {
-                        "timestamp": datetime.now().isoformat(),
-                        "action": "delete",
-                        "details": {
-                            "file_id": file_id,
-                            "filename": decrypted_metadata.get('original_filename'),
-                            "deletion_date": datetime.now().isoformat(),
-                            "size": decrypted_metadata.get('total_size'),
-                            "mime_type": decrypted_metadata.get('mime_type'),
-                            "fragment_count": len(decrypted_metadata.get('fragments', []))
-                        }
-                    }
-
-                    # Store the log
-                    log_file = BLOCKCHAIN_LOGS_PATH / f"log_{datetime.now().strftime('%Y%m%d')}.json"
-                    
-                    try:
-                        with open(log_file, 'r') as f:
-                            logs = json.load(f)
-                    except (FileNotFoundError, json.JSONDecodeError):
-                        logs = []
-                    
-                    if not isinstance(logs, list):
-                        logs = []
-                    
-                    logs.append(log_entry)
-                    
-                    with open(log_file, 'w') as f:
-                        json.dump(logs, f, indent=2)
-
-                    print(f"Successfully deleted file and created log entry")
-                    return jsonify({"message": "File deleted successfully"})
-
-                except Exception as decrypt_error:
-                    print(f"Error decrypting metadata: {str(decrypt_error)}")
-                    return jsonify({"error": "Invalid password or corrupted metadata"}), 400
-
-        except Exception as read_error:
-            print(f"Error reading metadata file: {str(read_error)}")
-            return jsonify({"error": "Failed to read metadata"}), 500
+        # Attempt to delete the file
+        if file_manager.delete_file(file_id):
+            return jsonify({"message": "File deleted successfully"})
+        else:
+            return jsonify({"error": "Failed to delete file"}), 500
 
     except Exception as e:
         print(f"Error in delete_file: {str(e)}")
@@ -1320,25 +1221,25 @@ def get_filtered_files():
 
                     try:
                         # Decrypt metadata
-                        nonce = base64.b64decode(encrypted_data.get('nonce', ''))
-                        ciphertext = base64.b64decode(encrypted_data.get('ciphertext', ''))
-                        decrypted_data = aesgcm.decrypt(nonce, ciphertext, None)
-                        metadata = json.loads(decrypted_data.decode())
+                        decrypted_metadata = decrypt_dict(aesgcm, encrypted_data)
 
                         # Skip deleted files
-                        if metadata.get('deleted', False):
+                        if decrypted_metadata.get('deleted', False):
                             continue
 
-                        # Add file to list if decryption succeeded
+                        # Format size to MB with 2 decimal places
+                        size_mb = round(float(decrypted_metadata.get('size', 0)) / (1024 * 1024), 2)
+
+                        # Add file to list with decrypted information
                         files_list.append({
                             "id": stored_metadata.get('file_id'),
-                            "name": metadata.get('original_filename'),
-                            "date": metadata.get('creation_date', '').split('T')[0],
-                            "size": metadata.get('total_size', 0),
-                            "status": "Available",
-                            "mime_type": metadata.get('mime_type')
+                            "name": decrypted_metadata.get('filename'),  # Original filename from decrypted metadata
+                            "date": decrypted_metadata.get('upload_date', '').split('T')[0],
+                            "size": size_mb,
+                            "status": decrypted_metadata.get('status', 'Available'),
+                            "mime_type": decrypted_metadata.get('mime_type')
                         })
-                        print(f"Successfully processed file: {metadata.get('original_filename')}")
+                        print(f"Successfully processed file: {decrypted_metadata.get('filename')}")
 
                     except Exception as decrypt_error:
                         print(f"Decryption failed for {metadata_file}: {str(decrypt_error)}")

@@ -355,7 +355,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("https://dashboard.lexchain.net/download", {
+                const response = await fetch("/api/download", {
                     method: "POST",
                     credentials: 'include',
                     headers: {
@@ -379,7 +379,7 @@ const Dashboard = () => {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = fileName; // Use the original filename
+                a.download = fileName;
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
@@ -407,7 +407,7 @@ const Dashboard = () => {
             setError(null);
 
             try {
-                const response = await fetch("https://dashboard.lexchain.net/delete", {
+                const response = await fetch("/api/delete", {
                     method: "POST",
                     credentials: 'include',
                     headers: {

@@ -12,10 +12,8 @@ RUN useradd -m -r -s /bin/bash appuser
 
 # Create necessary directories with correct permissions
 RUN mkdir -p /app/logs \
-    /app/secure_storage \
     /app/secure_storage/blockchain/metadata \
-    /app/secure_storage/blockchain/logs \
-    /app/secure_storage/fragments && \
+    /app/secure_storage/blockchain/logs && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app/secure_storage
 
