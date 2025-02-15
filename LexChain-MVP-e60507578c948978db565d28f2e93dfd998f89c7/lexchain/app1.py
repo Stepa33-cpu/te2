@@ -90,8 +90,31 @@ BLOCKCHAIN_METADATA_PATH = BLOCKCHAIN_DIR / "metadata"
 BLOCKCHAIN_LOGS_PATH = BLOCKCHAIN_DIR / "logs"
 FRAGMENTS_PATH = STORAGE_PATH / "fragments"
 
-for d in [STORAGE_PATH, BLOCKCHAIN_DIR, BLOCKCHAIN_METADATA_PATH, BLOCKCHAIN_LOGS_PATH, FRAGMENTS_PATH]:
-    d.mkdir(parents=True, exist_ok=True)
+def ensure_directory_permissions():
+    """Ensure all required directories exist with proper permissions"""
+    directories = [
+        STORAGE_PATH,
+        BLOCKCHAIN_DIR,
+        BLOCKCHAIN_METADATA_PATH,
+        BLOCKCHAIN_LOGS_PATH,
+        FRAGMENTS_PATH
+    ]
+    
+    for directory in directories:
+        try:
+            # Create directory if it doesn't exist
+            directory.mkdir(parents=True, exist_ok=True)
+            
+            # Set permissions to 755 (rwxr-xr-x)
+            directory.chmod(0o755)
+            
+            print(f"Ensured directory exists with proper permissions: {directory}")
+        except Exception as e:
+            print(f"Error setting up directory {directory}: {str(e)}")
+            raise
+
+# Call this function during app initialization
+ensure_directory_permissions()
 
 # ----------------- Encryption Helpers -----------------
 def derive_key(password: str) -> bytes:

@@ -19,6 +19,10 @@ services:
     build:
       context: ./lexchain
       dockerfile: Dockerfile
+    volumes:
+      - type: bind
+        source: ./secure_storage
+        target: /app/secure_storage
     environment:
       - PRODUCTION=true
       - FLASK_APP=app1.py

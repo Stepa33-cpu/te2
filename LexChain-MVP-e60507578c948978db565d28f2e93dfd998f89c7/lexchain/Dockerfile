@@ -20,6 +20,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN chown -R appuser:appuser /app
 
+# Create storage directories and set permissions
+RUN mkdir -p /app/secure_storage/blockchain/metadata \
+    /app/secure_storage/blockchain/logs \
+    /app/secure_storage/fragments && \
+    chown -R appuser:appuser /app/secure_storage && \
+    chmod -R 755 /app/secure_storage
+
 # Switch to non-root user
 USER appuser
 
